@@ -6,7 +6,7 @@ def firefox_options(firefox_options):
     firefox_options.set_preference('browser.anchor_color', '#FF0000')
     return firefox_options
 def chrome_options(chrome_options):
-    chrome_options.binary_location = 'c:\Usersusername\some_folder\chromedriver.exe'
+    chrome_options.binary_location = r'C:\Users\ASUS\Desktop\chrome-win64\chrome.exe'
     chrome_options.add_extension('/path/to/extension.crx')
     chrome_options.add_argument('--kiosk')
     return chrome_options
