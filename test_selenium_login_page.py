@@ -1,5 +1,8 @@
+import json
+
 import pytest
 from selenium import webdriver
+from selenium.webdriver.common.by import By
 from selenium.common import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
@@ -15,44 +18,46 @@ def driver():
 
 def login_pet_friends(driver):
     wait = WebDriverWait(driver, 10)
-
     email_input = wait.until(EC.element_to_be_clickable((By.ID, 'email')))
     email_input.send_keys('vasya@mail.com')
-
     password_input = wait.until(EC.element_to_be_clickable((By.ID, 'pass')))
     password_input.send_keys('12345')
-
     login_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[type="submit"]')))
     login_button.click()
 
-def get_pet_table(driver):
-    login_pet_friends(driver)
-    my_pets = driver.find_element(By.LINK_TEXT, "Мои питомцы")
-    my_pets.click()
-    pet_count = driver.find_element(By.CSS_SELECTOR,
-                                    "body > div.task2.fill > div > div.\.col-sm-4.left").text.split(': ')[1].split('\n')[0]
+
+
+
+def has_duplicates(dict_list):
+    seen = set()
+    for d in dict_list:
+        d_str = json.dumps(d, sort_keys=True)  
+        if d_str in seen:
+            return True  
+        seen.add(d_str)
+    return False
+
+def get_pets_dict(driver):
+    driver.implicitly_wait(10)
+
     pets = []
     table = driver.find_element(By.TAG_NAME, "table")
     rows = table.find_elements(By.TAG_NAME, "tr")
+    keys = [key.text for key in driver.find_elements(By.XPATH, '//thead/tr/th[@scope="col"]')]
+    photos = driver.find_elements(By.XPATH, '//tbody/tr/th[@scope="row"]/img')
 
-    for row in rows:
-        photos = row.find_elements(By.XPATH, '//tbody/tr/th[@scope="row"]')
+    for i, row in enumerate(rows[1:]):
         cells = row.find_elements(By.TAG_NAME, "td")
-        keys = driver.find_elements(By.XPATH, '//thead/tr/th[@scope="col"]')
         pet = {}
-        for cell, key in zip(cells, keys):
-            if key.text == "":
-                continue
-            elif key.text == "Фото":
-                try:
-                    pet[key.text] = photos[len(pets)].get_attribute("src")
-                except AttributeError or IndexError:
-                    pet[key.text] = ""
-            else:
-                pet[key.text] = cell.text
+        for key, cell in zip(keys[1:], cells):
+            pet[key] = cell.text
+        try:
+            pet["Фото"] = photos[i].get_attribute("src")
+        except (IndexError, AttributeError):
+            pet["Фото"] = ""
+        del pet['']
         pets.append(pet)
-    print(pets)
-
+    return pets
 
 
 class TestPets:
@@ -77,12 +82,6 @@ class TestPets:
         images = driver.find_elements(By.CLASS_NAME, 'card-img-top')
         names = driver.find_elements(By.CLASS_NAME, 'card-title')
         descriptions = driver.find_elements(By.CLASS_NAME, 'card-text')
-        # print([x.text for x in names])
-        # print([x.text for x in descriptions])
-        # print([x.get_attribute('src') for x in images])
-
-        # end_point = "/all_pets"
-        # assert driver.current_url[-len(end_point):] == end_point
         for i in range(len(names)):
             driver.execute_script("arguments[0].scrollIntoView();", images[i])
             pet_description = descriptions[i].text
@@ -94,6 +93,59 @@ class TestPets:
             assert len(parts[0]) > 0
             assert len(parts[1]) > 0
 
-    def test_pet_table(self, driver):
-        get_pet_table(driver)
-        # assert len(cells) == int(pet_count)
+    def test_all_pets_excist(self, driver):
+        wait = WebDriverWait(driver, 10)
+        login_pet_friends(driver)
+        my_pets = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Мои питомцы")))
+        my_pets.click()
+
+        pets = get_pets_dict(driver)
+        pets_count = wait.until(EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'col-sm-4 left')]")))
+        pets_count = int(pets_count.text.split("\n")[1].split(": ")[1])
+        assert len(pets) == pets_count
+
+    def test_half_of_pets_has_info(self, driver):
+        wait = WebDriverWait(driver, 10)
+        login_pet_friends(driver)
+        my_pets = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Мои питомцы")))
+        my_pets.click()
+        pets = get_pets_dict(driver)
+        count = 0
+        for pet in pets:
+            if count >= len(pets) // 2:
+                break
+            if pet['Имя'] and pet['Порода'] and pet['Возраст'] != '':
+                count += 1
+        assert count >= len(pets) // 2
+
+    def test_all_pets_has_photo(self, driver):
+        wait = WebDriverWait(driver, 10)
+        login_pet_friends(driver)
+        my_pets = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Мои питомцы")))
+        my_pets.click()
+        pets = get_pets_dict(driver)
+        count = 0
+        for pet in pets:
+            if pet['Фото'] == '':
+                break
+            else:
+                count += 1
+        assert len(pets) == count
+
+    def test_all_pets_has_unique_name(self, driver):
+        wait = WebDriverWait(driver, 10)
+        login_pet_friends(driver)
+        my_pets = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Мои питомцы")))
+        my_pets.click()
+        pets = get_pets_dict(driver)
+        names = [x['Имя'] for x in pets]
+        unique_names = set(names)
+        assert len(names) == len(unique_names)
+
+    def test_all_pets_are_unique(self, driver):
+        wait = WebDriverWait(driver, 10)
+        login_pet_friends(driver)
+        my_pets = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Мои питомцы")))
+        my_pets.click()
+        pets = get_pets_dict(driver)
+        assert has_duplicates(pets) == False
